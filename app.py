@@ -16,9 +16,9 @@ class App:
         
         self.auto_predict = False 
         
-        #self.init_gui()
+        self.init_gui()
         self.delay = 15
-        #self.update()
+        self.update()
         
         self.window.attributes("topmost", True)
         self.window.mainloop()
@@ -61,3 +61,41 @@ class App:
             self.update()
         else:
             self.window.after_cancel(self.update)
+            
+    def save_for_class(self, class_number):
+        ret, frame = self.camera.get_frame()
+        if not os.path.exists(f"dataset/{self.classname_one}"):
+            os.makedirs(f"dataset/{self.classname_one}")
+        if not os.path.exists(f"dataset/{self.classname_two}"):
+            os.makedirs(f"dataset/{self.classname_two}")
+        if ret:
+            cv.imwrite(f'{class_number}/image_{self.counters[class_number - 1]}.jpg', cv.cvtColor(frame, cv.COLOR_RGB2BGR))  # Converte o frame de RGB para BGR e salva como imagem
+            # Redimensiona a imagem para 150x150 pixels e salva
+            img = PIL.Image.fromarray(frame)
+            img.thumbnail((150, 150), PIL.Image.ANTIALIAS)
+            img = PIL.ImageTk.PhotoImage(img)
+            img.save(f"dataset/{self.classname_one if class_number == 1 else self.classname_two}/{self.classname_one if class_number == 1 else self.classname_two}_{self.counters[class_number - 1]}.jpg")
+            
+            self.counters[class_number - 1] += 1
+    
+    def reset(self):
+        self.counters = [1, 1]
+        # Self.model.reset_model()
+        for class_name in [self.classname_one, self.classname_two]:
+            if os.path.exists(f"dataset/{class_name}"):
+                for file in os.listdir(f"dataset/{class_name}"):
+                    os.remove(os.path.join(f"dataset/{class_name}", file))
+        self.class_label.config(text="CLASS")
+        messagebox.showinfo("Reiniciar", "Contadores reiniciados.")
+        
+        
+    def update(self):
+        if self.auto_predict:
+            #self.predict()
+            pass
+        ret, frame = self.camera.get_frame()
+        if ret:
+            self.photo = PIL.ImageTk.PhotoImage(image=PIL.Image.fromarray(frame)) # Converte o frame de RGB para um objeto PhotoImage
+            self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW) # Desenha o frame no canvas
+        else:
+            messagebox.showerror("Erro", "Não foi possível capturar o frame da câmera.")

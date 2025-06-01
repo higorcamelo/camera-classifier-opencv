@@ -6,6 +6,9 @@ class Camera:
         if not self.camera.isOpened():
             raise Exception("Não foi possível abrir a câmera")
         
+        self.width = int(self.camera.get(cv.CAP_PROP_FRAME_WIDTH))  # Largura do frame
+        self.height = int(self.camera.get(cv.CAP_PROP_FRAME_HEIGHT)) # Altura do frame
+        
     def __del__(self):
         if self.camera.isOpened():
             self.camera.release()
