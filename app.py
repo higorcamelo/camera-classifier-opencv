@@ -1,101 +1,130 @@
 import tkinter as tk
 from tkinter import simpledialog, messagebox
 import cv2 as cv
+import model
 import camera
 import os
-import PIL.Image, PIL.ImageTk
+from PIL import Image, ImageTk
+
 
 class App:
-    def __init__(self, window= tk.Tk(), window_title="Camera Classifier"):
+    def __init__(self, window=tk.Tk(), window_title="Camera Classifier"):
         self.window = window
         self.window.title(window_title)
         self.camera = camera.Camera()
+
+        self.is_capturing = [False, False]
+        self.capture_interval = 500  # ms
         self.counters = [1, 1]
-        
-        #self.model =
-        
-        self.auto_predict = False 
-        
+
+        # Nomes das classes
+        self.classname_one = simpledialog.askstring("Classe Nº1", "Insira o nome da primeira classe:", parent=self.window)
+        self.classname_two = simpledialog.askstring("Classe Nº2", "Insira o nome da segunda classe:", parent=self.window)
+        self.class_names = [self.classname_one, self.classname_two]
+
+        # Modelo
+        self.model = model.Model(self.class_names)
+
         self.init_gui()
+
         self.delay = 15
         self.update()
-        
-        self.window.attributes("topmost", True)
         self.window.mainloop()
-        
-    def init_gui(self):
 
+    def init_gui(self):
         self.canvas = tk.Canvas(self.window, width=self.camera.width, height=self.camera.height)
         self.canvas.pack()
 
-        self.btn_toggleauto = tk.Button(self.window, text="Auto Predição", width=50, command=self.auto_predict_toggle)
-        self.btn_toggleauto.pack(anchor=tk.CENTER, expand=True)
+        # Linha da classe 1
+        frame1 = tk.Frame(self.window)
+        frame1.pack(pady=5)
 
-        self.classname_one = simpledialog.askstring("Classe Nº1", "Insira o nome da primeira classe:", parent=self.window)
-        self.classname_two = simpledialog.askstring("Classe Nº2", "Insira o nome da segunda:", parent=self.window)
+        tk.Label(frame1, text=self.classname_one, font=("Arial", 14)).pack(side=tk.LEFT)
+        tk.Button(frame1, text="Iniciar Coleta", command=lambda: self.start_capture(0)).pack(side=tk.LEFT, padx=5)
+        tk.Button(frame1, text="Parar", command=lambda: self.stop_capture(0)).pack(side=tk.LEFT, padx=5)
+        self.counter_label1 = tk.Label(frame1, text="0 imagens")
+        self.counter_label1.pack(side=tk.LEFT, padx=5)
 
-        self.btn_class_one = tk.Button(self.window, text=self.classname_one, width=50, command=lambda: self.save_for_class(1))
-        self.btn_class_one.pack(anchor=tk.CENTER, expand=True)
+        # Linha da classe 2
+        frame2 = tk.Frame(self.window)
+        frame2.pack(pady=5)
 
-        self.btn_class_two = tk.Button(self.window, text=self.classname_two, width=50, command=lambda: self.save_for_class(2))
-        self.btn_class_two.pack(anchor=tk.CENTER, expand=True)
+        tk.Label(frame2, text=self.classname_two, font=("Arial", 14)).pack(side=tk.LEFT)
+        tk.Button(frame2, text="Iniciar Coleta", command=lambda: self.start_capture(1)).pack(side=tk.LEFT, padx=5)
+        tk.Button(frame2, text="Parar", command=lambda: self.stop_capture(1)).pack(side=tk.LEFT, padx=5)
+        self.counter_label2 = tk.Label(frame2, text="0 imagens")
+        self.counter_label2.pack(side=tk.LEFT, padx=5)
 
-        self.btn_train = tk.Button(self.window, text="Treinar modelo", width=50, command=lambda: self.model.train_model(self.counters))
-        self.btn_train.pack(anchor=tk.CENTER, expand=True)
+        # Controles gerais
+        frame_controls = tk.Frame(self.window)
+        frame_controls.pack(pady=10)
 
-        self.btn_predict = tk.Button(self.window, text="Predizer", width=50, command=self.predict)
-        self.btn_predict.pack(anchor=tk.CENTER, expand=True)
+        tk.Button(frame_controls, text="Treinar Modelo", command=lambda: self.model.train_model(self.counters), width=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(frame_controls, text="Predizer", command=self.predict, width=10).pack(side=tk.LEFT, padx=5)
+        tk.Button(frame_controls, text="Resetar", command=self.reset, width=10).pack(side=tk.LEFT, padx=5)
 
-        self.btn_reset = tk.Button(self.window, text="Reiniciar", width=50, command=self.reset)
-        self.btn_reset.pack(anchor=tk.CENTER, expand=True)
+        self.class_label = tk.Label(self.window, text="Classificação Atual: ---", font=("Arial", 16))
+        self.class_label.pack(pady=10)
 
-        self.class_label = tk.Label(self.window, text="CLASS")
-        self.class_label.config(font=("Arial", 20))
-        self.class_label.pack(anchor=tk.CENTER, expand=True)
+    def start_capture(self, class_num):
+        self.is_capturing[class_num] = True
+        self.capture_loop(class_num)
 
-        
-        
-    def auto_predict_toggle(self):
-        self.auto_predict = not self.auto_predict
-        if self.auto_predict:
-            self.update()
-        else:
-            self.window.after_cancel(self.update)
-            
-    def save_for_class(self, class_number):
-        ret, frame = self.camera.get_frame()
-        if not os.path.exists(f"dataset/{self.classname_one}"):
-            os.makedirs(f"dataset/{self.classname_one}")
-        if not os.path.exists(f"dataset/{self.classname_two}"):
-            os.makedirs(f"dataset/{self.classname_two}")
-        if ret:
-            cv.imwrite(f'{class_number}/image_{self.counters[class_number - 1]}.jpg', cv.cvtColor(frame, cv.COLOR_RGB2BGR))  # Converte o frame de RGB para BGR e salva como imagem
-            # Redimensiona a imagem para 150x150 pixels e salva
-            img = PIL.Image.fromarray(frame)
-            img.thumbnail((150, 150), PIL.Image.ANTIALIAS)
-            img = PIL.ImageTk.PhotoImage(img)
-            img.save(f"dataset/{self.classname_one if class_number == 1 else self.classname_two}/{self.classname_one if class_number == 1 else self.classname_two}_{self.counters[class_number - 1]}.jpg")
-            
-            self.counters[class_number - 1] += 1
-    
+    def capture_loop(self, class_num):
+        if self.is_capturing[class_num]:
+            self.save_for_class(class_num)
+            self.window.after(self.capture_interval, lambda: self.capture_loop(class_num))
+
+    def stop_capture(self, class_num):
+        self.is_capturing[class_num] = False
+        messagebox.showinfo("Parado", f"Coleta da classe {self.class_names[class_num]} interrompida.")
+
+    def save_for_class(self, class_num):
+        frame = self.camera.get_frame()[1]
+        dir_path = f'dataset/{self.class_names[class_num]}'
+        os.makedirs(dir_path, exist_ok=True)
+
+        img_path = f'{dir_path}/frame{self.counters[class_num]}.jpg'
+        gray = cv.cvtColor(frame, cv.COLOR_RGB2GRAY)
+        resized = cv.resize(gray, (150, 150))
+
+        cv.imwrite(img_path, resized)
+
+        self.counters[class_num] += 1
+        self.update_counter_labels()
+
+    def update_counter_labels(self):
+        self.counter_label1.config(text=f"{self.counters[0] - 1} imagens")
+        self.counter_label2.config(text=f"{self.counters[1] - 1} imagens")
+
     def reset(self):
+        self.is_capturing = [False, False]
         self.counters = [1, 1]
-        # Self.model.reset_model()
-        for class_name in [self.classname_one, self.classname_two]:
-            if os.path.exists(f"dataset/{class_name}"):
-                for file in os.listdir(f"dataset/{class_name}"):
-                    os.remove(os.path.join(f"dataset/{class_name}", file))
-        self.class_label.config(text="CLASS")
-        messagebox.showinfo("Reiniciar", "Contadores reiniciados.")
-        
-        
+        self.model.reset_model()
+
+        for class_name in self.class_names:
+            dir_path = f"dataset/{class_name}"
+            if os.path.exists(dir_path):
+                for file in os.listdir(dir_path):
+                    os.remove(os.path.join(dir_path, file))
+
+        self.class_label.config(text="Classificação Atual: ---")
+        self.update_counter_labels()
+        messagebox.showinfo("Resetado", "Tudo foi resetado.")
+
     def update(self):
-        if self.auto_predict:
-            #self.predict()
-            pass
         ret, frame = self.camera.get_frame()
         if ret:
-            self.photo = PIL.ImageTk.PhotoImage(image=PIL.Image.fromarray(frame)) # Converte o frame de RGB para um objeto PhotoImage
-            self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW) # Desenha o frame no canvas
-        else:
-            messagebox.showerror("Erro", "Não foi possível capturar o frame da câmera.")
+            self.photo = ImageTk.PhotoImage(image=Image.fromarray(frame))
+            self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)
+        self.window.after(self.delay, self.update)
+
+    def predict(self):
+        ret, frame = self.camera.get_frame()
+        if ret:
+            try:
+                prediction = self.model.predict(frame)
+                class_name = self.class_names[prediction - 1]
+                self.class_label.config(text=f"Classificação Atual: {class_name}")
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao predizer: {e}\nTreine o modelo antes.")
